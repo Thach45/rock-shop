@@ -5,8 +5,10 @@ import { PrismaService } from 'src/shared/service/prisma.service';
 import { TokenService } from 'src/shared/service/token.service';
 import { Prisma } from '@prisma/client';
 import { TokenExpiredError } from '@nestjs/jwt';
-import { RegisterBodyDto } from './auth.dto';
+
 import { RoleService } from './role.service';
+import { RegisterBodyType } from './auth.model';
+import { AuthRepository } from './auth.repo';
 
 
 @Injectable()
@@ -15,40 +17,25 @@ export class AuthService {
         private readonly hashingService: HashingService, 
         private readonly prisma: PrismaService,
         private readonly tokenService: TokenService,
-        private readonly roleService: RoleService
+        private readonly roleService: RoleService,
+        private readonly authRepository: AuthRepository
     ) {}
-    async register(body: RegisterBodyDto) {
+    async register(body: RegisterBodyType) {
         try {
             if (body.password !== body.confirmPassword) {
                 throw new Error('Password and confirm password do not match');
             }
             const hashedPassword = await this.hashingService.hashPassword(body.password);
             const clientRole = await this.roleService.getClientRole();
-            // check if user already exists
-            // const existingUser = await this.prisma.user.findUnique({
-            //     where: {
-            //         email: body.email
-            //     }
-            // });
-            // if (existingUser) {
-            //     throw new UnprocessableEntityException('User already exists');
-            // }
-            const user = await this.prisma.user.create({
-                data: {
-                    email: body.email,
-                    password: hashedPassword,
-                    name: body.name,
-                    phoneNumber: body.phoneNumber,
-                    roleId: clientRole
-                },
-                omit: {
-                    password: true,
-                    totpSecret: true,
-                }
-                
+            const user = await this.authRepository.createUser({
+                email: body.email,
+                password: hashedPassword,
+                name: body.name,
+                phoneNumber: body.phoneNumber,
+                roleId: clientRole
             });
-            
             return user;
+            
         } catch (error) {
             if(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'){
                 throw new UnprocessableEntityException('User already exists');
