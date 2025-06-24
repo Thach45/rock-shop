@@ -3,12 +3,18 @@ import { HashingService } from 'src/shared/service/hashing.service';
 import { PrismaService } from 'src/shared/service/prisma.service';
 
 import { TokenService } from 'src/shared/service/token.service';
-import { Prisma } from '@prisma/client';
+import { Prisma, VerificationType } from '@prisma/client';
 import { TokenExpiredError } from '@nestjs/jwt';
 
 import { RoleService } from './role.service';
-import { RegisterBodyType } from './auth.model';
+import { RegisterBodyType, SendOtpType } from './auth.model';
 import { AuthRepository } from './auth.repo';
+import { SharedUserRepo } from 'src/shared/repositories/shared-user.repo';
+import { generateOtp } from 'src/shared/helper/generate-otp';
+import { addMilliseconds } from 'date-fns';
+import ms from 'ms';
+
+
 
 
 @Injectable()
@@ -18,7 +24,8 @@ export class AuthService {
         private readonly prisma: PrismaService,
         private readonly tokenService: TokenService,
         private readonly roleService: RoleService,
-        private readonly authRepository: AuthRepository
+        private readonly authRepository: AuthRepository,
+        private readonly sharedUserRepo: SharedUserRepo
     ) {}
     async register(body: RegisterBodyType) {
         try {
@@ -42,6 +49,33 @@ export class AuthService {
             }
             throw new Error(error.message);
         }
+    }
+    async sendOtp(body: SendOtpType) {
+        try {
+            //1 check exsit mail
+            const emailExist = await this.sharedUserRepo.findUserByEmail(body.email);
+           
+            if(emailExist){
+                throw new UnprocessableEntityException('User already exists');
+            }
+            const code = generateOtp();
+            const expireOtp = ms(process.env.EXPIRE_OTP as unknown as number);
+            console.log(expireOtp);
+            const otp = await this.authRepository.createOtp({
+                email: body.email,
+                type: VerificationType.REGISTER,
+                code,
+                expiresAt: addMilliseconds(new Date(), expireOtp as unknown as number)
+            });
+            return otp;
+          
+        } catch (error) {
+            throw error;    
+        }
+        
+        
+
+        
     }
 
     async login(body: any) {

@@ -1,3 +1,4 @@
+import { VerificationType } from "src/shared/constants/auth.constants";
 import { z } from "zod";
 
 export enum UserStatus {
@@ -50,3 +51,20 @@ export const RegisterResponseSchema = UserSchema.omit({
 });
 
 export type RegisterResponseType = z.infer<typeof RegisterResponseSchema>;
+
+export const VerificationSchema = z.object({
+    id: z.number(),
+    email: z.string().email(),
+    code: z.string().length(6),
+    type: z.nativeEnum(VerificationType),
+    expiresAt: z.date(),
+    createdAt: z.date(),
+})
+export type VerificationType = z.infer<typeof VerificationSchema>;
+
+export const SendOtpSchema = VerificationSchema.pick({
+    email: true,
+    type: true,
+}).strict();
+
+export type SendOtpType = z.infer<typeof SendOtpSchema>;
