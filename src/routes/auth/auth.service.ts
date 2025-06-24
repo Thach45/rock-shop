@@ -32,6 +32,24 @@ export class AuthService {
             if (body.password !== body.confirmPassword) {
                 throw new Error('Password and confirm password do not match');
             }
+            const otp = await this.authRepository.getOtp({
+                email: body.email,
+                type: VerificationType.REGISTER,
+                code: body.otp
+            });
+            if(!otp){
+                throw new UnprocessableEntityException({
+                    field: 'otp',
+                    message: 'Invalid otp'
+                    
+                });
+            }
+            if(otp.expiresAt < new Date()){
+                throw new UnprocessableEntityException({
+                    field: 'otp',
+                    message: 'Otp has expired'
+                });
+            }
             const hashedPassword = await this.hashingService.hashPassword(body.password);
             const clientRole = await this.roleService.getClientRole();
             const user = await this.authRepository.createUser({
@@ -47,7 +65,10 @@ export class AuthService {
             if(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'){
                 throw new UnprocessableEntityException('User already exists');
             }
-            throw new Error(error.message);
+            if (error instanceof UnprocessableEntityException) {
+                throw error; 
+            }
+            
         }
     }
     async sendOtp(body: SendOtpType) {

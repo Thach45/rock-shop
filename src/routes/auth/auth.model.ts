@@ -33,6 +33,7 @@ export const RegisterBodySchema = UserSchema.pick({
     password: true,
 }).extend({
     confirmPassword: z.string().min(6).max(100),
+    otp: z.string().length(6),
 }).strict().superRefine((data, ctx) => {
     if (data.password !== data.confirmPassword) {
         ctx.addIssue({

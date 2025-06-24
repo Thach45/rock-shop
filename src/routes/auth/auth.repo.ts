@@ -1,5 +1,5 @@
 import { Injectable, UnprocessableEntityException } from "@nestjs/common";
-import { VerificationCode } from "@prisma/client";
+import { VerificationCode, VerificationType } from "@prisma/client";
 import { PrismaService } from "src/shared/service/prisma.service";
 
 type CreateUserType = {
@@ -9,6 +9,7 @@ type CreateUserType = {
     phoneNumber: string;
     roleId: number;
 }
+type GetOtpType = Pick<VerificationCode, "email" | "type" | "code">;
 
 type CreateOtpType = Pick<VerificationCode, "email" | "type" | "code" | "expiresAt">;
 
@@ -25,7 +26,17 @@ export class AuthRepository {
             }
         });
     }
-
+    async getOtp(otp: GetOtpType): Promise<VerificationCode | null> {
+        const verificationCode = await this.prisma.verificationCode.findUnique({
+            where: {
+                email: otp.email,
+                type: otp.type,
+                code: otp.code,
+            },
+        });
+        
+        return verificationCode;
+    }
     async createOtp(otp: CreateOtpType): Promise<VerificationCode> {
         //1 check exist otp
         const existOtp = await this.prisma.verificationCode.findFirst({
