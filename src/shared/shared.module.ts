@@ -7,6 +7,7 @@ import { ApiKeyGuard } from './guards/api-key.guard';
 import { AccessTokenGuard } from './guards/auth.guard';
 import { AuthenticationGuard } from './guards/authentication.guard';
 import { SharedUserRepo } from './repositories/shared-user.repo';
+import { SendEmailService } from './service/send-email.service';
 
 const sharedServices = [
     PrismaService,
@@ -15,7 +16,8 @@ const sharedServices = [
     ApiKeyGuard,
     AccessTokenGuard,
     AuthenticationGuard,
-    SharedUserRepo
+    SharedUserRepo,
+    SendEmailService
 ];
 @Global()
 @Module({

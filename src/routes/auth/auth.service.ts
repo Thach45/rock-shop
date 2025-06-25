@@ -13,6 +13,7 @@ import { SharedUserRepo } from 'src/shared/repositories/shared-user.repo';
 import { generateOtp } from 'src/shared/helper/generate-otp';
 import { addMilliseconds } from 'date-fns';
 import ms from 'ms';
+import { SendEmailService } from 'src/shared/service/send-email.service';
 
 
 
@@ -25,7 +26,8 @@ export class AuthService {
         private readonly tokenService: TokenService,
         private readonly roleService: RoleService,
         private readonly authRepository: AuthRepository,
-        private readonly sharedUserRepo: SharedUserRepo
+        private readonly sharedUserRepo: SharedUserRepo,
+        private readonly sendEmailService: SendEmailService
     ) {}
     async register(body: RegisterBodyType) {
         try {
@@ -87,6 +89,10 @@ export class AuthService {
                 type: VerificationType.REGISTER,
                 code,
                 expiresAt: addMilliseconds(new Date(), expireOtp as unknown as number)
+            });
+            await this.sendEmailService.sendOtpEmail({
+                recipientEmail: body.email,
+                otp: code
             });
             return otp;
           
