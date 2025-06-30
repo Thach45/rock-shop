@@ -1,6 +1,7 @@
 import { Injectable, UnprocessableEntityException } from "@nestjs/common";
-import { VerificationCode, VerificationType } from "@prisma/client";
+import { Device, VerificationCode, VerificationType } from "@prisma/client";
 import { PrismaService } from "src/shared/service/prisma.service";
+import { CreateDeviceType, RoleType, UserType } from "./auth.model";
 
 type CreateUserType = {
     email: string;
@@ -10,13 +11,24 @@ type CreateUserType = {
     roleId: number;
 }
 type GetOtpType = Pick<VerificationCode, "email" | "type" | "code">;
-
+type UpdateDeviceType = Pick<Device, "userAgent" | "ipAddress" | "lastActiveAt" | "isActive">;
 type CreateOtpType = Pick<VerificationCode, "email" | "type" | "code" | "expiresAt">;
 
 @Injectable()
 export class AuthRepository {
     constructor(private readonly prisma: PrismaService) {}
-    
+    async getUserByEmailIncludeRoleAndDevice (email: string): Promise<(UserType & {
+        role: RoleType;
+    }) | null> {
+        return this.prisma.user.findUnique({
+            where: {
+                email: email,
+            },
+            include: {
+                role: true,
+            }
+        });
+    }
     async createUser(user: CreateUserType) {
         return this.prisma.user.create({
             data: user,
@@ -24,6 +36,21 @@ export class AuthRepository {
                 password: true,
                 totpSecret: true,
             }
+        });
+    }
+    async createRefreshToken(refreshToken: string,expiresAt: Date, userId: number, deviceId: number) {
+        return this.prisma.refreshToken.create({
+            data: {
+                token: refreshToken,
+                userId: userId,
+                deviceId: deviceId,
+                expiresAt: expiresAt
+            },
+        });
+    }
+    async createDevice(device: CreateDeviceType) {
+        return this.prisma.device.create({
+            data: device,
         });
     }
     async getOtp(otp: GetOtpType): Promise<VerificationCode | null> {
@@ -55,5 +82,30 @@ export class AuthRepository {
             data: otp,
         });
         return verificationCode;
+    }
+    async RefreshTokenIncludeRole(refreshToken: string) {
+        return this.prisma.refreshToken.findUnique({
+            where: {
+                token: refreshToken
+            },
+            include: {
+                user: {
+                    include: {
+                        role: true,
+                    }
+                }
+            }
+        });
+    }
+    async updateDevice(deviceId: number, data: UpdateDeviceType) {
+        return this.prisma.device.update({
+            where: { id: deviceId },
+            data: data,
+        });
+    }
+    async deleteRefreshToken(refreshToken: string) {
+        return this.prisma.refreshToken.delete({
+            where: { token: refreshToken },
+        });
     }
 }

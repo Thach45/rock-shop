@@ -7,7 +7,7 @@ import { Prisma, VerificationType } from '@prisma/client';
 import { TokenExpiredError } from '@nestjs/jwt';
 
 import { RoleService } from './role.service';
-import { RegisterBodyType, SendOtpType } from './auth.model';
+import { LoginBodyType, RefreshTokenType, RegisterBodyType, SendOtpType } from './auth.model';
 import { AuthRepository } from './auth.repo';
 import { SharedUserRepo } from 'src/shared/repositories/shared-user.repo';
 import { generateOtp } from 'src/shared/helper/generate-otp';
@@ -105,12 +105,8 @@ export class AuthService {
         
     }
 
-    async login(body: any) {
-        const user = await this.prisma.user.findUnique({
-            where: {
-                email: body.email
-            }
-        });
+    async login(body: LoginBodyType & {userAgent: string, ipAddress: string}) {
+        const user = await this.authRepository.getUserByEmailIncludeRoleAndDevice(body.email);
         if (!user) {
             throw new UnauthorizedException('User not found');
         }
@@ -122,7 +118,14 @@ export class AuthService {
                 message: 'Invalid password'
             });
         }
-        const { accessToken, refreshToken } = await this.generateTokens(user.id);
+        const device = await this.authRepository.createDevice({
+            userId: user.id,
+            userAgent: body.userAgent,
+            ipAddress: body.ipAddress,
+            lastActiveAt: new Date(),
+            isActive: true
+        });
+        const { accessToken, refreshToken } = await this.generateTokens(user.id, device.id, user.roleId, user.role.name);
         return {
             accessToken,
             refreshToken
@@ -131,17 +134,16 @@ export class AuthService {
     }
 
 
-    async generateTokens(userId: number) {
-        const accessToken = this.tokenService.signAccessToken({ userId });
+    async generateTokens(userId: number, deviceId: number, roleId: number, roleName: string) {
+        const accessToken = this.tokenService.signAccessToken({ userId, deviceId, roleId, roleName });
         const refreshToken = this.tokenService.signRefreshToken({ userId });
         const decodedRefreshToken = await this.tokenService.verifyRefreshToken(refreshToken);
-        await this.prisma.refreshToken.create({
-            data: {
-                token: refreshToken,
-                userId: userId,
-                expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30)
-            }
-        });
+        const expireRefreshToken = ms(process.env.REFRESH_TOKEN_EXPIRES_IN as unknown as number);
+        await this.authRepository.createRefreshToken(
+            refreshToken, 
+            addMilliseconds(new Date(), expireRefreshToken as unknown as number),
+            userId, 
+            deviceId);
   
         return {
             accessToken,
@@ -149,31 +151,40 @@ export class AuthService {
         };
     }
 
-    async refreshToken(body: any) {
-
+    async refreshToken(body: RefreshTokenType & {userAgent: string, ipAddress: string}) {
         try {
+            // Check if refresh token exists
+            if (!body.refreshToken) {
+                throw new UnauthorizedException('Refresh token is required');
+            }
+
             //1. Check if refresh token is valid
             const decodedRefreshToken = await this.tokenService.verifyRefreshToken(body.refreshToken);
-            console.log(decodedRefreshToken);
-            console.log(body.refreshToken);
             if(!decodedRefreshToken){
                 throw new UnauthorizedException('Invalid refresh token');
             }
             // 2. Check if refresh token is in the database
-            const checkRefreshToken = await this.prisma.refreshToken.findUniqueOrThrow({
-                where: {
-                    token: body.refreshToken
-                }
-            });
-            console.log(checkRefreshToken);
-        //    3. delete the refresh token from the database
-           await this.prisma.refreshToken.delete({
-            where: {
-                token: body.refreshToken
+            const checkRefreshToken = await this.authRepository.RefreshTokenIncludeRole(body.refreshToken);
+            if(!checkRefreshToken){
+                throw new UnauthorizedException('Invalid refresh token');
             }
-           });
+            //3 update device
+            await this.authRepository.updateDevice(checkRefreshToken.deviceId, {
+                userAgent: body.userAgent,
+                ipAddress: body.ipAddress,
+                lastActiveAt: new Date(),
+                isActive: true
+            });
+        //    3. delete the refresh token from the database
+           await this.authRepository.deleteRefreshToken(body.refreshToken);
+           
            // 4. generate new tokens
-            const { accessToken, refreshToken } = await this.generateTokens(decodedRefreshToken.userId);
+            const { accessToken, refreshToken } = await this.generateTokens(
+                decodedRefreshToken.userId,
+                 checkRefreshToken.deviceId,
+                 checkRefreshToken.user.roleId,
+                 checkRefreshToken.user.role.name
+                  );
             return {
                 accessToken,
                 refreshToken
@@ -181,39 +192,58 @@ export class AuthService {
        
             
         } catch (error) {
+            console.error('Refresh token error:', error);
+            
             if (error instanceof TokenExpiredError) {
                 throw new UnauthorizedException('Refresh token has expired');
             }
+            
             if(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
                 throw new UnauthorizedException('Invalid refresh token');
             }
-            throw new UnauthorizedException('Something went wrong');
+
+            if (error.name === 'JsonWebTokenError') {
+                throw new UnauthorizedException('Invalid refresh token format');
+            }
+
+            if (error.name === 'SyntaxError' && error.message.includes('Bad control character')) {
+                throw new UnauthorizedException('Invalid token format - contains invalid characters');
+            }
+
+            // If it's already an UnauthorizedException, just throw it
+            if (error instanceof UnauthorizedException) {
+                throw error;
+            }
+
+            // For any other unexpected errors
+            console.error('Unexpected error during refresh token:', error);
+            throw new UnauthorizedException('Something went wrong while processing refresh token');
         }
         
     }
-    async logout(body: any) {
-        try {
-            const decodedRefreshToken = await this.tokenService.verifyRefreshToken(body.refreshToken);
-            if(!decodedRefreshToken){
-                throw new UnauthorizedException('Invalid refresh token');
-            }
-            await this.prisma.refreshToken.delete({
-                where: {
-                    token: body.refreshToken
-                }
-            });
-            return {
-                message: 'Logged out successfully'
-            };
-        } catch (error) {
-            if(error instanceof TokenExpiredError){
-                throw new UnauthorizedException('Refresh token has expired');
-            }
-            if(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025'){
-                throw new UnauthorizedException('Invalid refresh token');
-            }
-            throw new UnauthorizedException('Something went wrong');
-        }
-    }
+    // async logout(body: any) {
+    //     try {
+    //         const decodedRefreshToken = await this.tokenService.verifyRefreshToken(body.refreshToken);
+    //         if(!decodedRefreshToken){
+    //             throw new UnauthorizedException('Invalid refresh token');
+    //         }
+    //         await this.prisma.refreshToken.delete({
+    //             where: {
+    //                 token: body.refreshToken
+    //             }
+    //         });
+    //         return {
+    //             message: 'Logged out successfully'
+    //         };
+    //     } catch (error) {
+    //         if(error instanceof TokenExpiredError){
+    //             throw new UnauthorizedException('Refresh token has expired');
+    //         }
+    //         if(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025'){
+    //             throw new UnauthorizedException('Invalid refresh token');
+    //         }
+    //         throw new UnauthorizedException('Something went wrong');
+    //     }
+    // }
 }
 
