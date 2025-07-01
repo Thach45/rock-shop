@@ -1,5 +1,5 @@
-import { Injectable, UnprocessableEntityException } from "@nestjs/common";
-import { Device, VerificationCode, VerificationType } from "@prisma/client";
+import { Injectable, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
+import { Device, Prisma, VerificationCode, VerificationType } from "@prisma/client";
 import { PrismaService } from "src/shared/service/prisma.service";
 import { CreateDeviceType, RoleType, UserType } from "./auth.model";
 
@@ -11,7 +11,12 @@ type CreateUserType = {
     roleId: number;
 }
 type GetOtpType = Pick<VerificationCode, "email" | "type" | "code">;
-type UpdateDeviceType = Pick<Device, "userAgent" | "ipAddress" | "lastActiveAt" | "isActive">;
+type UpdateDeviceType = {
+    userAgent?: string;
+    ipAddress?: string;
+    lastActiveAt: Date;
+    isActive: boolean;
+};
 type CreateOtpType = Pick<VerificationCode, "email" | "type" | "code" | "expiresAt">;
 
 @Injectable()
@@ -108,4 +113,5 @@ export class AuthRepository {
             where: { token: refreshToken },
         });
     }
+
 }

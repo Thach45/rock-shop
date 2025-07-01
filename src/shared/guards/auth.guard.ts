@@ -22,6 +22,7 @@ export class AccessTokenGuard implements CanActivate {
         request.user = decoded;
       return true;
     } catch (error) {
+        
         if(error instanceof TokenExpiredError){
             throw new UnauthorizedException('Access token has expired');
         }

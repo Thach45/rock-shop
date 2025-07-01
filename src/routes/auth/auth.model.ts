@@ -101,6 +101,11 @@ export const RefreshTokenResponseSchema = z
   .strict()
 export type RefreshTokenResponseType = z.infer<typeof RefreshTokenResponseSchema>
 
+export const LogoutSchema = z.object({
+  refreshToken: z.string(),
+})
+export type LogoutType = z.infer<typeof LogoutSchema>
+
 export const CreateDeviceSchema = z
   .object({
     userId: z.number(),

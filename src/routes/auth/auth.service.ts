@@ -7,7 +7,7 @@ import { Prisma, VerificationType } from '@prisma/client';
 import { TokenExpiredError } from '@nestjs/jwt';
 
 import { RoleService } from './role.service';
-import { LoginBodyType, RefreshTokenType, RegisterBodyType, SendOtpType } from './auth.model';
+import { LoginBodyType, LogoutType, RefreshTokenType, RegisterBodyType, SendOtpType } from './auth.model';
 import { AuthRepository } from './auth.repo';
 import { SharedUserRepo } from 'src/shared/repositories/shared-user.repo';
 import { generateOtp } from 'src/shared/helper/generate-otp';
@@ -94,7 +94,9 @@ export class AuthService {
                 recipientEmail: body.email,
                 otp: code
             });
-            return otp;
+            return {
+                message: 'Otp sent successfully'
+            };
           
         } catch (error) {
             throw error;    
@@ -166,7 +168,7 @@ export class AuthService {
             // 2. Check if refresh token is in the database
             const checkRefreshToken = await this.authRepository.RefreshTokenIncludeRole(body.refreshToken);
             if(!checkRefreshToken){
-                throw new UnauthorizedException('Invalid refresh token');
+                throw new UnauthorizedException('Token is revoked');
             }
             //3 update device
             await this.authRepository.updateDevice(checkRefreshToken.deviceId, {
@@ -221,29 +223,32 @@ export class AuthService {
         }
         
     }
-    // async logout(body: any) {
-    //     try {
-    //         const decodedRefreshToken = await this.tokenService.verifyRefreshToken(body.refreshToken);
-    //         if(!decodedRefreshToken){
-    //             throw new UnauthorizedException('Invalid refresh token');
-    //         }
-    //         await this.prisma.refreshToken.delete({
-    //             where: {
-    //                 token: body.refreshToken
-    //             }
-    //         });
-    //         return {
-    //             message: 'Logged out successfully'
-    //         };
-    //     } catch (error) {
-    //         if(error instanceof TokenExpiredError){
-    //             throw new UnauthorizedException('Refresh token has expired');
-    //         }
-    //         if(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025'){
-    //             throw new UnauthorizedException('Invalid refresh token');
-    //         }
-    //         throw new UnauthorizedException('Something went wrong');
-    //     }
-    // }
+    async logout(body: LogoutType) {
+        try {
+            const decodedRefreshToken = await this.tokenService.verifyRefreshToken(body.refreshToken);
+            if(!decodedRefreshToken){
+                throw new UnauthorizedException('Invalid refresh token');
+            }
+            const deleteRefreshToken = await this.authRepository.deleteRefreshToken(body.refreshToken);
+            
+            await this.authRepository.updateDevice(deleteRefreshToken.deviceId, {
+                isActive: false,
+                lastActiveAt: new Date(),
+            });
+            return {
+                message: 'Logged out successfully'
+            };
+        } catch (error) {
+            if(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025'){
+                throw new UnauthorizedException('Not found refresh token');
+            }
+         
+            if(error instanceof TokenExpiredError){
+                throw new UnauthorizedException('Refresh token has expired');
+            }
+            throw new UnauthorizedException('Something went wrong');
+            
+        }
+    }
 }
 
