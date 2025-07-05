@@ -31,6 +31,7 @@ export const RegisterBodySchema = UserSchema.pick({
   .extend({
     confirmPassword: z.string().min(6).max(100),
     otp: z.string().length(6),
+ 
   })
   .strict()
   .superRefine((data, ctx) => {
@@ -132,3 +133,8 @@ export const RoleSchema = z
   .strict()
 
 export type RoleType = z.infer<typeof RoleSchema>
+
+export const GoogleLinkSchema = z.object({
+  link: z.string(),
+})
+export type GoogleLinkType = z.infer<typeof GoogleLinkSchema>

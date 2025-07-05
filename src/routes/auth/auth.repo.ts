@@ -9,6 +9,7 @@ type CreateUserType = {
     name: string;
     phoneNumber: string;
     roleId: number;
+    avatar?: string | null;
 }
 type GetOtpType = Pick<VerificationCode, "email" | "type" | "code">;
 type UpdateDeviceType = {
