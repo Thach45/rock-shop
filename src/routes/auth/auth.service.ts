@@ -7,7 +7,7 @@ import { Prisma, VerificationType } from '@prisma/client';
 import { TokenExpiredError } from '@nestjs/jwt';
 
 import { RoleService } from './role.service';
-import { LoginBodyType, LogoutType, RefreshTokenType, RegisterBodyType, SendOtpType } from './auth.model';
+import { ForgotPasswordType, LoginBodyType, LogoutType, RefreshTokenType, RegisterBodyType, SendOtpType } from './auth.model';
 import { AuthRepository } from './auth.repo';
 import { SharedUserRepo } from 'src/shared/repositories/shared-user.repo';
 import { generateOtp } from 'src/shared/helper/generate-otp';
@@ -61,6 +61,7 @@ export class AuthService {
                 phoneNumber: body.phoneNumber,
                 roleId: clientRole
             });
+            await this.authRepository.deleteOtp(body.email, VerificationType.REGISTER, body.otp);
             return user;
             
         } catch (error) {
@@ -78,15 +79,18 @@ export class AuthService {
             //1 check exsit mail
             const emailExist = await this.sharedUserRepo.findUserByEmail(body.email);
            
-            if(emailExist){
+            if(body.type === VerificationType.REGISTER && emailExist){
                 throw new UnprocessableEntityException('User already exists');
+            }
+            if(body.type === VerificationType.FORGOT_PASSWORD && !emailExist){
+                throw new UnprocessableEntityException('User not found');
             }
             const code = generateOtp();
             const expireOtp = ms(process.env.EXPIRE_OTP as unknown as number);
             console.log(expireOtp);
             const otp = await this.authRepository.createOtp({
                 email: body.email,
-                type: VerificationType.REGISTER,
+                type: body.type,
                 code,
                 expiresAt: addMilliseconds(new Date(), expireOtp as unknown as number)
             });
@@ -249,6 +253,39 @@ export class AuthService {
             throw new UnauthorizedException('Something went wrong');
             
         }
+    }
+
+    async forgotPassword(body: ForgotPasswordType) {
+        const user = await this.sharedUserRepo.findUserByEmail(body.email);
+        if(!user){
+            throw new UnauthorizedException('User not found');
+        }
+        const otp = await this.authRepository.getOtp({
+            email: body.email,
+            type: VerificationType.FORGOT_PASSWORD,
+            code: body.code
+        });
+        if(!otp){
+            throw new UnprocessableEntityException({
+                field: 'otp',
+                message: 'Invalid otp'
+                
+            });
+        }
+        if(otp.expiresAt < new Date()){
+            throw new UnprocessableEntityException({
+                field: 'otp',
+                message: 'Otp has expired'
+            });
+        }
+        const hashedPassword = await this.hashingService.hashPassword(body.password);
+        await this.authRepository.updateUser(user.id, {
+            password: hashedPassword
+        });
+        await this.authRepository.deleteOtp(body.email, VerificationType.FORGOT_PASSWORD, body.code);
+        return {
+            message: 'Password reset successfully'
+        };
     }
 }
 

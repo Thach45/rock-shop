@@ -1,5 +1,5 @@
 import { Injectable, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
-import { Device, Prisma, VerificationCode, VerificationType } from "@prisma/client";
+import { Device, Prisma, User, VerificationCode, VerificationType } from "@prisma/client";
 import { PrismaService } from "src/shared/service/prisma.service";
 import { CreateDeviceType, RoleType, UserType } from "./auth.model";
 
@@ -18,6 +18,7 @@ type UpdateDeviceType = {
     lastActiveAt: Date;
     isActive: boolean;
 };
+type UpdateUserType = Pick<User, "password">;
 type CreateOtpType = Pick<VerificationCode, "email" | "type" | "code" | "expiresAt">;
 
 @Injectable()
@@ -89,6 +90,15 @@ export class AuthRepository {
         });
         return verificationCode;
     }
+    async deleteOtp(email: string, type: VerificationType, code: string) {
+        return this.prisma.verificationCode.delete({
+            where: {
+                email: email,
+                type: type,
+                code: code,
+            },
+        });
+    }
     async RefreshTokenIncludeRole(refreshToken: string) {
         return this.prisma.refreshToken.findUnique({
             where: {
@@ -114,5 +124,10 @@ export class AuthRepository {
             where: { token: refreshToken },
         });
     }
-
+    async updateUser(userId: number, data: UpdateUserType) {
+        return this.prisma.user.update({
+            where: { id: userId },
+            data: data,
+        });
+    }
 }

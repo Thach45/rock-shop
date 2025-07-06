@@ -138,3 +138,20 @@ export const GoogleLinkSchema = z.object({
   link: z.string(),
 })
 export type GoogleLinkType = z.infer<typeof GoogleLinkSchema>
+
+export const ForgotPasswordSchema = z.object({
+  email: z.string().email(),
+  code: z.string().length(6),
+  password: z.string().min(6).max(100),
+  confirmPassword: z.string().min(6).max(100),
+  
+}).strict().superRefine((data, ctx) => {
+  if (data.password !== data.confirmPassword) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Password and confirm password do not match',
+      path: ['confirmPassword'],
+    })
+  }
+})
+export type ForgotPasswordType = z.infer<typeof ForgotPasswordSchema>

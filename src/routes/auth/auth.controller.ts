@@ -2,13 +2,13 @@ import { BadRequestException, Body, ClassSerializerInterceptor, Controller, Get,
 import { AuthService } from './auth.service';
 
 import { Response } from 'express';
-import { LoginBodyDto, LoginResponseDto, LogoutBodyDto, RefreshTokenBodyDto, RefreshTokenResponseDto, RegisterBodyDto, SendOtpDto, UserResponseDto } from './auth.dto';
+import { ForgotPasswordBodyDto, LoginBodyDto, LoginResponseDto, LogoutBodyDto, RefreshTokenBodyDto, RefreshTokenResponseDto, RegisterBodyDto, SendOtpDto, UserResponseDto } from './auth.dto';
 import { ZodSerializerDto    } from 'nestjs-zod';
 import { UserAgent } from 'src/shared/decorator/user-agent.decorator';
 import { GetIp } from 'src/shared/decorator/get-ip.decorator';
 import { Public } from 'src/shared/decorator/auth.decorator';
 import { GoogleService } from './google.service';
-import { GoogleLinkSchema } from './auth.model';
+import { ForgotPasswordType, GoogleLinkSchema } from './auth.model';
 
 @Controller('auth')
 export class AuthController {
@@ -49,11 +49,19 @@ export class AuthController {
         return user;
        
     }
+    @Public()
+    @Post("forgot-password")
+    async forgotPassword(@Body() body: ForgotPasswordBodyDto) {
+        const data = await this.authService.forgotPassword(body);
+        return data;    
+    }
+
     @Post('logout')
     async logout(@Body() body: LogoutBodyDto) {
         const user = await this.authService.logout(body);
         return user;
     }
+
 
     @Get('google-link')
     @Public()
@@ -73,4 +81,5 @@ export class AuthController {
            res.redirect(process.env.GOOGLE_CLIENT_REDIRECT+ "?error=" + message);
         }
     }
+
 }
